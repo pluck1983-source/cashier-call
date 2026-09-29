@@ -214,7 +214,7 @@ button { cursor: pointer; }
     </div>
     <label class="field"><span class="label">Call wording (# is the till number)</span><input type="text" id="callText"></label>
     <label class="field"><span class="label">Closing announcement</span><input type="text" id="closeText"></label>
-    <label class="check"><input type="checkbox" id="recorded"> Use the recorded voice for tills 1 to 3</label>
+    <label class="check"><input type="checkbox" id="recorded"> Use the recorded announcements</label>
     <label class="check"><input type="checkbox" id="chime"> Play a two-tone chime before speaking</label>
     <div class="field">
       <span class="label">Test on this screen</span>
@@ -496,7 +496,7 @@ function sayOnce(text) {
   });
 }
 /* Recorded announcements ship beside the page as audio/<what>.mp3; anything without a clip, or a clip that fails, falls back to speech. */
-const RECORDED = ["1", "2", "3"];
+const RECORDED = ["1", "2", "3", "close"];
 const clips = {};
 function loadClips() { RECORDED.forEach((w) => { if (!clips[w]) { const a = new Audio("audio/" + w + ".mp3"); a.preload = "auto"; clips[w] = a; } }); }
 function playClip(w) {

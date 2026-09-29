@@ -101,6 +101,8 @@ button { cursor: pointer; }
 .start { position: absolute; inset: 0; display: grid; place-items: center; background: #000; z-index: 5; padding-inline: 16px; }
 .start .inner { display: grid; gap: 18px; justify-items: center; text-align: center; max-width: 440px; }
 .start h2 { font-family: var(--f-sign); font-weight: 900; font-size: 48px; text-transform: uppercase; margin: 0; }
+.gate-code { display: grid; gap: 6px; }
+.gate-code b { font-family: var(--f-sign); font-weight: 700; font-size: 44px; letter-spacing: .16em; }
 .start p { color: var(--muted); margin: 0; line-height: 1.5; }
 .primary { background: var(--ink); color: var(--bg); border: 0; border-radius: 12px; padding: 16px 28px; font-weight: 700; font-size: 18px; }
 
@@ -131,10 +133,10 @@ button { cursor: pointer; }
     <div class="field">
       <label class="label" for="codeInput">Pairing code</label>
       <div class="code-row">
-        <input id="codeInput" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC234">
+        <input id="codeInput" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7PM3QXA">
         <button class="ghost" id="genBtn" type="button">New code</button>
       </div>
-      <p class="hint">Letters and numbers, 4 to 10 characters. Every phone and screen with the same code is linked.</p>
+      <p class="hint">A new 8-character code is made for you. Type the display's code on each cashier phone to link them.</p>
     </div>
     <div class="field">
       <span class="label">This device is</span>
@@ -181,6 +183,7 @@ button { cursor: pointer; }
   <div class="start" id="startGate">
     <div class="inner">
       <h2>Start display</h2>
+      <div class="gate-code"><span class="label">Pairing code for cashier phones</span><b id="gateCode"></b></div>
       <p>Browsers only allow sound after a tap or click on the page. Start once and leave this screen open. It stays black until a cashier calls.</p>
       <button class="primary" id="startBtn" type="button">Start display with sound</button>
     </div>
@@ -251,7 +254,7 @@ let settings = Object.assign({}, DEFAULTS, store.get("settings", {}));
 settings.colors = Object.assign({}, DEFAULTS.colors, settings.colors || {});
 const WHATS = ["1", "2", "3", "close"];
 const uid = () => Math.random().toString(36).slice(2, 10);
-const cleanCode = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+const cleanCode = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
 const safeColor = (c, d) => /^#[0-9a-f]{6}$/i.test(c || "") ? c : d;
 
 /* ---------------- transport: claude.ai room, or PeerJS when opened as a plain file ---------------- */
@@ -364,15 +367,17 @@ document.querySelectorAll(".key").forEach((k) => k.style.setProperty("--c", `var
 
 function genCode() {
   const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let s = "";
-  const b = crypto.getRandomValues(new Uint8Array(6)); b.forEach((x) => (s += A[x % A.length])); return s;
+  while (s.length < 8) { const x = crypto.getRandomValues(new Uint8Array(1))[0]; if (x < 248) s += A[x % A.length]; }
+  return s;
 }
-$("codeInput").value = store.get("code", "") || genCode();
+const savedCode = store.get("code", "");
+$("codeInput").value = savedCode && savedCode.length === 8 ? savedCode : genCode();
 $("codeInput").addEventListener("input", (e) => { const v = cleanCode(e.target.value); if (v !== e.target.value) e.target.value = v; });
 $("genBtn").onclick = () => { $("codeInput").value = genCode(); $("setupErr").textContent = ""; };
 
 async function begin(role) {
   const code = cleanCode($("codeInput").value);
-  if (code.length < 4) { $("setupErr").textContent = "Enter a code of at least 4 letters or numbers, or tap New code."; return; }
+  if (code.length !== 8) { $("setupErr").textContent = "The code needs exactly 8 letters or numbers. Tap New code to make one."; return; }
   $("setupErr").textContent = "";
   store.set("code", code); store.set("role", role);
   if (role === "cashier") startCashier(code); else startDisplay(code);
@@ -496,7 +501,7 @@ async function announce(what) {
   for (let i = 0; i < (+settings.repeats || 1); i++) { if (i) await wait(700); await sayOnce(text); }
 }
 async function startDisplay(code) {
-  show("display"); $("dCode").textContent = "Code " + code; setPill($("dPill"), { state: "", text: "Connecting" });
+  show("display"); $("dCode").textContent = "Code " + code; $("gateCode").textContent = code; setPill($("dPill"), { state: "", text: "Connecting" });
   $("startGate").hidden = started;
   try {
     link = await openLink(code, "display", { status: (st) => setPill($("dPill"), st), message: (m) => { if (m.t === "call") enqueue({ id: m.id, what: String(m.what), remote: true }, true); } });
@@ -552,7 +557,7 @@ document.querySelectorAll("[data-test]").forEach((b) => (b.onclick = () => { rea
 
 /* ---------------- resume last role ---------------- */
 const lastRole = store.get("role", null), lastCode = store.get("code", "");
-if (lastCode && (lastRole === "cashier" || lastRole === "display")) { $("codeInput").value = lastCode; begin(lastRole); }
+if (lastCode && lastCode.length === 8 && (lastRole === "cashier" || lastRole === "display")) { $("codeInput").value = lastCode; begin(lastRole); }
 })();
 </script>
 

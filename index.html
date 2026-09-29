@@ -214,6 +214,7 @@ button { cursor: pointer; }
     </div>
     <label class="field"><span class="label">Call wording (# is the till number)</span><input type="text" id="callText"></label>
     <label class="field"><span class="label">Closing announcement</span><input type="text" id="closeText"></label>
+    <label class="check"><input type="checkbox" id="recorded"> Use the recorded voice for tills 1 to 3</label>
     <label class="check"><input type="checkbox" id="chime"> Play a two-tone chime before speaking</label>
     <div class="field">
       <span class="label">Test on this screen</span>
@@ -247,7 +248,7 @@ const store = {
 };
 const DEFAULTS = {
   colors: { "1": "#ff2d2d", "2": "#2f7bff", "3": "#ffd21f", close: "#ff8a1f" },
-  duration: 8, gap: 1.5, repeats: 1, chime: true, voice: "",
+  duration: 8, gap: 1.5, repeats: 1, chime: true, recorded: true, voice: "",
   callText: "Cashier number # please", closeText: "The shop will be closing soon"
 };
 let settings = Object.assign({}, DEFAULTS, store.get("settings", {}));
@@ -494,11 +495,29 @@ function sayOnce(text) {
     speechSynthesis.speak(u);
   });
 }
+/* Recorded announcements ship beside the page as audio/<what>.mp3; anything without a clip, or a clip that fails, falls back to speech. */
+const RECORDED = ["1", "2", "3"];
+const clips = {};
+function loadClips() { RECORDED.forEach((w) => { if (!clips[w]) { const a = new Audio("audio/" + w + ".mp3"); a.preload = "auto"; clips[w] = a; } }); }
+function playClip(w) {
+  return new Promise((res) => {
+    const a = clips[w]; if (!a || a.error) return res(false);
+    const done = (ok) => { clearTimeout(t); a.onended = a.onerror = null; res(ok); };
+    const t = setTimeout(() => done(true), 15000);
+    a.onended = () => done(true); a.onerror = () => done(false);
+    a.currentTime = 0;
+    a.play().catch(() => done(false));
+  });
+}
 async function announce(what) {
   const text = what === "close" ? (settings.closeText || DEFAULTS.closeText) : (settings.callText || DEFAULTS.callText).replace(/#/g, what);
+  const useClip = settings.recorded !== false && RECORDED.includes(what);
   await chime();
   if (window.speechSynthesis) speechSynthesis.cancel();
-  for (let i = 0; i < (+settings.repeats || 1); i++) { if (i) await wait(700); await sayOnce(text); }
+  for (let i = 0; i < (+settings.repeats || 1); i++) {
+    if (i) await wait(700);
+    if (!(useClip && (await playClip(what)))) await sayOnce(text);
+  }
 }
 async function startDisplay(code) {
   show("display"); $("dCode").textContent = "Code " + code; $("gateCode").textContent = code; setPill($("dPill"), { state: "", text: "Connecting" });
@@ -509,6 +528,7 @@ async function startDisplay(code) {
 }
 $("startBtn").onclick = () => {
   started = true; $("startGate").hidden = true;
+  loadClips();
   try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch {}
   if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }
   goFull(); keepAwake();
@@ -536,14 +556,14 @@ if (window.speechSynthesis) { fillVoices(); speechSynthesis.onvoiceschanged = fi
 function openSettings() {
   WHATS.forEach((w) => ($("col" + w).value = safeColor(settings.colors[w], DEFAULTS.colors[w])));
   $("dur").value = settings.duration; $("gap").value = settings.gap; $("reps").value = String(settings.repeats);
-  $("callText").value = settings.callText; $("closeText").value = settings.closeText; $("chime").checked = !!settings.chime;
+  $("callText").value = settings.callText; $("closeText").value = settings.closeText; $("chime").checked = !!settings.chime; $("recorded").checked = settings.recorded !== false;
   fillVoices(); $("sheet").hidden = false;
 }
 function readSettings() {
   const colors = {}; WHATS.forEach((w) => (colors[w] = $("col" + w).value));
   settings = {
     colors, duration: Math.min(120, Math.max(2, +$("dur").value || 8)), gap: Math.min(20, Math.max(0, +$("gap").value || 0)),
-    repeats: +$("reps").value || 1, chime: $("chime").checked, voice: $("voice").value,
+    repeats: +$("reps").value || 1, chime: $("chime").checked, recorded: $("recorded").checked, voice: $("voice").value,
     callText: $("callText").value.trim() || DEFAULTS.callText, closeText: $("closeText").value.trim() || DEFAULTS.closeText
   };
   store.set("settings", settings); applyColors(colors); if (link) link.look(colors);
